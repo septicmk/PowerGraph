@@ -13,6 +13,10 @@ cmake_policy(SET CMP0005 NEW)
 # defined
 set(CMAKE_MODULE_PATH ${GraphLab_SOURCE_DIR}/cmake)
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(HAVE_FLAG_STD_CXX14 TRUE)
+
 # TODO: what is this used by
 set(BUILD_SHARED_LIBS ON)
 
@@ -57,8 +61,8 @@ endif()
 
 set(CPP11_FLAGS "")
 if(CPP11)
-  message(STATUS "C++11 Enabled")
-  set(CPP11_FLAGS "-std=c++11 -Wno-enum-compare -Wno-conversion-null")
+  message(STATUS "C++14 Enabled")
+  set(CPP11_FLAGS "-std=c++14 -Wno-enum-compare -Wno-conversion-null")
 endif()
 
 if(VID32)
@@ -253,6 +257,40 @@ if(NOT NO_TCMALLOC)
     add_definitions(-DHAS_TCMALLOC)
 endif()
 
+set(CMAKE_THREAD_PREFER_PTHREAD ON)
+find_package(Threads REQUIRED)
+
+# Lib vineyard =============================================================
+macro(find_apache_arrow)
+    # workaround for: https://issues.apache.org/jira/browse/ARROW-11836
+    if(NOT BUILD_VINEYARD_PYPI_PACKAGES)
+      find_package(Arrow QUIET)
+    endif()
+    if(Arrow_FOUND)
+        set(ARROW_INCLUDE_DIR)
+        if (TARGET arrow_shared)
+            set(ARROW_SHARED_LIB arrow_shared)
+        endif()
+        if (TARGET arrow_static)
+            set(ARROW_STATIC_LIB arrow_static)
+        endif()
+    else()
+        include("cmake/FindArrow.cmake")
+        if(NOT ARROW_FOUND)
+            message(FATAL_ERROR "apache-arrow is required, please install it and retry")
+        endif()
+    endif()
+endmacro(find_apache_arrow)
+find_apache_arrow()
+include_directories(SYSTEM ${ARROW_INCLUDE_DIR})
+
+find_package(vineyard 0.3.6 REQUIRED)
+include_directories(${VINEYARD_INCLUDE_DIRS})
+add_compile_options(-DENABLE_SELECTOR)
+message(STATUS "${VINEYARD_LIBRARIES}")
+#foreach(vydlib ${VINEYARD_LIBRARIES})
+#message(STATUS "${vydlib}")
+#endforeach()
 
 
 # Lib Jpeg =================================================================
@@ -721,6 +759,12 @@ macro(add_graphlab_executable NAME)
   requires_core_deps(${NAME})
 endmacro(add_graphlab_executable)
 
+macro(add_graphlab_vyd_executable NAME)
+  add_executable(${NAME} ${ARGN})
+  requires_core_deps(${NAME})
+  target_link_libraries(${NAME} graphlab ${VINEYARD_LIBRARIES})
+  add_dependencies(${NAME} graphlab)
+endmacro(add_graphlab_vyd_executable)
 
 macro(add_extension_executable NAME)
   add_executable(${NAME} extension_main.cpp ${ARGN})
